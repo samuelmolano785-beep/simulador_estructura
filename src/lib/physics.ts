@@ -552,6 +552,11 @@ function buildCalculationSteps(data: {
   const areaM2 = params.sectionAreaCm2 * 1e-4;
   const inertiaM4 = params.momentOfInertiaCm4 * 1e-8;
   const E_MPa = material.elasticModulusGPa * 1000;
+  const angleRad = (params.forceAngleDeg * Math.PI) / 180;
+  const sinT = Math.sin(angleRad);
+  const cosT = Math.cos(angleRad);
+  const volumeM3 = areaM2 * totalMemberLengthM;
+  const activeSelfWeight = params.includeSelfWeight ? selfWeightKN : 0;
 
   const supportNote =
     params.supportCondition === SupportCondition.CANTILEVER
@@ -567,58 +572,150 @@ function buildCalculationSteps(data: {
     {
       id: 'step-force-decomposition',
       stepNumber: 1,
-      title: 'Descomposición de Fuerza Aplicada y Masa Adicional',
-      formula: 'F_y = F·sen(θ) ; F_x = F·cos(θ) ; W_adic = (m_adic × g) / 1000',
-      substitution: `F = ${formatForce(loadKN, u)} a θ = ${params.forceAngleDeg}° en x_F = ${xLoad.toFixed(2)} m · m_adic = ${params.additionalMassKg} kg en x_m = ${xMass.toFixed(2)} m (g = ${params.gravityMs2} m/s²)`,
+      title: 'Descomposición de la Fuerza Aplicada y Peso de la Masa Adicional',
+      whatIsCalculated:
+        'Se calcula cuánto de la fuerza aplicada empuja hacia abajo (componente vertical), cuánto empuja hacia los lados (componente horizontal) y cuánta fuerza ejerce la masa adicional por acción de la gravedad.',
+      howItIsDone:
+        '1) Se multiplica la fuerza F por el seno del ángulo θ para sacar la fuerza vertical F_y. 2) Se multiplica F por el coseno de θ para sacar el empuje horizontal F_x. 3) Se multiplica la masa adicional (kg) por la gravedad g para obtener Newtons y se divide entre 1000 para pasar a kN.',
+      formula: 'F_y = F · sen(θ)   |   F_x = F · cos(θ)   |   W_adic = (m_adic · g) / 1000',
+      variables: [
+        { symbol: 'F', meaning: `Fuerza puntual aplicada (${formatForce(loadKN, u)}) en x_F = ${xLoad.toFixed(2)} m` },
+        { symbol: 'θ', meaning: `Ángulo de aplicación de la fuerza (${params.forceAngleDeg}° respecto a la horizontal)` },
+        { symbol: 'F_y', meaning: 'Componente vertical de la fuerza aplicada (carga hacia abajo)' },
+        { symbol: 'F_x', meaning: 'Componente horizontal de la fuerza aplicada (empuje lateral)' },
+        { symbol: 'm_adic', meaning: `Masa adicional colocada sobre la estructura (${params.additionalMassKg} kg) en x_m = ${xMass.toFixed(2)} m` },
+        { symbol: 'g', meaning: `Aceleración de la gravedad (${params.gravityMs2} m/s²)` },
+        { symbol: 'W_adic', meaning: 'Peso en fuerza generado por la masa adicional' },
+      ],
+      substitution: `F_y = ${formatForce(loadKN, u)} × sen(${params.forceAngleDeg}° = ${sinT.toFixed(3)}) = ${formatForce(forceVerticalKN, u)}  |  F_x = ${formatForce(loadKN, u)} × cos(${params.forceAngleDeg}° = ${cosT.toFixed(3)}) = ${formatForce(forceHorizontalKN, u)}  |  W_adic = (${params.additionalMassKg} kg × ${params.gravityMs2} m/s²) / 1000 = ${formatForce(additionalWeightKN, u)}`,
       resultText: `F_y = ${formatForce(forceVerticalKN, u)} · F_x = ${formatForce(forceHorizontalKN, u)} · W_adic = ${formatForce(additionalWeightKN, u)}`,
     },
     {
       id: 'step-self-weight',
       stepNumber: 2,
-      title: 'Peso Propio Estructural y Masa Total',
-      formula: 'm_est = ρ × (A × ΣL_i)  ;  m_total = m_est + m_adic  ;  W_propio = (m_est × g)/1000',
-      substitution: `A = ${areaM2.toFixed(4)} m² × ΣL = ${totalMemberLengthM.toFixed(2)} m · ρ = ${material.densityKgM3} kg/m³`,
-      resultText: `m_est = ${structuralMassKg.toFixed(1)} kg · m_total = ${totalMassKg.toFixed(1)} kg · W_propio = ${params.includeSelfWeight ? formatForce(selfWeightKN, u) : 'Excluido'}`,
+      title: 'Peso Propio de la Estructura y Masa Total',
+      whatIsCalculated:
+        'Se determina cuánto pesa la estructura por sí sola según su tamaño y material (peso propio) y cuál es la masa total sumando la masa adicional.',
+      howItIsDone:
+        '1) Se convierte el área A de cm² a m² dividiendo entre 10 000. 2) Se multiplica esa área por la suma de longitudes de todas las barras (ΣL_i) para obtener el volumen V. 3) Se multiplica V por la densidad ρ del material para sacar la masa propia m_est. 4) Se multiplica m_est por g y se divide entre 1000 para sacar el peso propio W_propio.',
+      formula: 'V = A · ΣL_i   |   m_est = ρ · V   |   m_total = m_est + m_adic   |   W_propio = (m_est · g) / 1000',
+      variables: [
+        { symbol: 'A', meaning: `Área de la sección transversal de cada barra (${params.sectionAreaCm2} cm² = ${areaM2.toFixed(4)} m²)` },
+        { symbol: 'ΣL_i', meaning: `Suma de las longitudes de todas las barras de la estructura (${totalMemberLengthM.toFixed(2)} m)` },
+        { symbol: 'V', meaning: 'Volumen total de material usado en la estructura (m³)' },
+        { symbol: 'ρ', meaning: `Densidad del material ${material.label} (${material.densityKgM3} kg/m³)` },
+        { symbol: 'm_est', meaning: 'Masa propia de la estructura sin cargas externas (kg)' },
+        { symbol: 'm_total', meaning: 'Suma de la masa propia + la masa adicional (kg)' },
+        { symbol: 'W_propio', meaning: 'Peso de la estructura hacia abajo debido a la gravedad' },
+      ],
+      substitution: `V ≈ ${areaM2.toFixed(4)} m² × ${totalMemberLengthM.toFixed(2)} m = ${volumeM3.toFixed(4)} m³  |  m_est = ${structuralMassKg.toFixed(1)} kg  |  m_total = ${structuralMassKg.toFixed(1)} + ${params.additionalMassKg} = ${totalMassKg.toFixed(1)} kg  |  W_propio = (${structuralMassKg.toFixed(1)} × ${params.gravityMs2}) / 1000 = ${formatForce(selfWeightKN, u)}`,
+      resultText: `m_est = ${structuralMassKg.toFixed(1)} kg · m_total = ${totalMassKg.toFixed(1)} kg · W_propio = ${params.includeSelfWeight ? formatForce(selfWeightKN, u) : `${formatForce(selfWeightKN, u)} (No sumado)`}`,
     },
     {
       id: 'step-total-loads',
       stepNumber: 3,
-      title: 'Combinación de Cargas y Factor de Mayoración (γ_f)',
-      formula: 'ΣF_y,nom = F_y + W_adic + w·L + W_propio  ;  F_y,dis = γ_f × ΣF_y,nom',
-      substitution: `${formatForce(forceVerticalKN, u)} + ${formatForce(additionalWeightKN, u)} + (${formatDistLoad(distLoadKNm, u)}×${L}m=${formatForce(distributedTotalKN, u)}) + ${formatForce(params.includeSelfWeight ? selfWeightKN : 0, u)} × γ_f=${params.loadFactorGamma.toFixed(2)}`,
-      resultText: `Nominal ΣFy = ${formatForce(totalVerticalLoadKN, u)} · Diseño = ${formatForce(factoredVerticalLoadKN, u)} · ΣFx = ${formatForce(totalHorizontalLoadKN, u)} (Viento ${formatForce(windKN, u)})`,
+      title: 'Suma Total de Cargas y Factor de Mayoración de Diseño',
+      whatIsCalculated:
+        'Se suman todas las fuerzas verticales (puntual, masa adicional, carga distribuida y peso propio) y todas las fuerzas horizontales (viento + F_x), y luego se multiplican por el factor de seguridad de carga γ_f.',
+      howItIsDone:
+        '1) La carga distribuida w se multiplica por toda la longitud L para convertirla en fuerza total W_dist. 2) Se suman F_y + W_adic + W_dist + W_propio para hallar la carga vertical nominal ΣF_y,nom. 3) Se multiplica por γ_f para obtener la carga de diseño F_y,dis. 4) Se suman el viento F_h y F_x (multiplicados por γ_f) para hallar la fuerza horizontal total ΣF_x.',
+      formula: 'W_dist = w · L   |   ΣF_y,nom = F_y + W_adic + W_dist + W_propio   |   F_y,dis = γ_f · ΣF_y,nom',
+      variables: [
+        { symbol: 'w', meaning: `Carga distribuida uniforme (${formatDistLoad(distLoadKNm, u)}) repartida por metro` },
+        { symbol: 'L', meaning: `Longitud total o ancho base de la estructura (${L.toFixed(1)} m)` },
+        { symbol: 'W_dist', meaning: `Fuerza equivalente de la carga distribuida (${formatForce(distributedTotalKN, u)})` },
+        { symbol: 'ΣF_y,nom', meaning: 'Carga vertical total real sin mayorar' },
+        { symbol: 'γ_f', meaning: `Factor de mayoración de carga (${params.loadFactorGamma.toFixed(2)}) para diseño seguro` },
+        { symbol: 'F_y,dis', meaning: 'Carga vertical total mayorada usada en el cálculo' },
+        { symbol: 'F_h / ΣF_x', meaning: `Fuerza de viento (${formatForce(windKN, u)}) y suma horizontal total (${formatForce(totalHorizontalLoadKN, u)})` },
+      ],
+      substitution: `W_dist = ${formatDistLoad(distLoadKNm, u)} × ${L.toFixed(1)} m = ${formatForce(distributedTotalKN, u)}  |  ΣF_y,nom = ${formatForce(forceVerticalKN, u)} + ${formatForce(additionalWeightKN, u)} + ${formatForce(distributedTotalKN, u)} + ${formatForce(activeSelfWeight, u)} = ${formatForce(totalVerticalLoadKN, u)}  |  F_y,dis = ${params.loadFactorGamma.toFixed(2)} × ${formatForce(totalVerticalLoadKN, u)} = ${formatForce(factoredVerticalLoadKN, u)}`,
+      resultText: `Nominal ΣFy = ${formatForce(totalVerticalLoadKN, u)} · Diseño F_y,dis = ${formatForce(factoredVerticalLoadKN, u)} · ΣFx = ${formatForce(totalHorizontalLoadKN, u)}`,
     },
     {
       id: 'step-equilibrium',
       stepNumber: 4,
-      title: 'Equilibrio Estático y Reacciones en Apoyos',
-      formula: 'ΣF_x = 0 ; ΣF_y = 0 ; ΣM_A = F_y·x_F + W_adic·x_m + (W_dist+W_p)·(L/2) + ΣF_x·H_c - R_By·L = 0',
-      substitution: `x_F = ${xLoad.toFixed(2)} m, x_m = ${xMass.toFixed(2)} m, L = ${L.toFixed(1)} m, H = ${H.toFixed(1)} m`,
+      title: 'Equilibrio Estático y Reacciones en los Apoyos (RA y RB)',
+      whatIsCalculated:
+        'Se calcula cuánta fuerza hacia arriba y hacia los lados debe soportar cada apoyo (izquierdo A y derecho B) para que la estructura no se hunda, no se deslice ni gire.',
+      howItIsDone:
+        '1) Por equilibrio horizontal (ΣF_x = 0), el apoyo A resiste el empuje horizontal total (R_Ax = -ΣF_x). 2) Se suman los momentos de giro alrededor del punto A multiplicando cada fuerza por su distancia (brazo) para despejar R_By = Momento Total / L. 3) Por equilibrio vertical (ΣF_y = 0), el apoyo A soporta el resto: R_Ay = F_y,dis - R_By.',
+      formula: 'ΣF_x = 0 ⇒ R_Ax = -ΣF_x   |   ΣM_A = 0 ⇒ R_By = (F_y·x_F + W_adic·x_m + W_u·L/2 + ΣF_x·H_c) / L   |   R_Ay = F_y,dis - R_By',
+      variables: [
+        { symbol: 'R_Ax', meaning: 'Reacción horizontal en el apoyo izquierdo A' },
+        { symbol: 'R_Ay', meaning: 'Reacción vertical hacia arriba en el apoyo izquierdo A' },
+        { symbol: 'R_By', meaning: 'Reacción vertical hacia arriba en el apoyo derecho B' },
+        { symbol: 'x_F', meaning: `Distancia desde el apoyo A hasta la fuerza F (${xLoad.toFixed(2)} m)` },
+        { symbol: 'x_m', meaning: `Distancia desde el apoyo A hasta la masa adicional (${xMass.toFixed(2)} m)` },
+        { symbol: 'W_u', meaning: 'Suma de cargas uniformes (W_dist + W_propio)' },
+        { symbol: 'H / H_c', meaning: `Altura de la estructura (${H.toFixed(1)} m) y altura efectiva del viento` },
+        { symbol: 'M_A', meaning: 'Momento de empotramiento en el apoyo A (aplica en voladizo)' },
+      ],
+      substitution: `x_F = ${xLoad.toFixed(2)} m, x_m = ${xMass.toFixed(2)} m, L = ${L.toFixed(1)} m, F_y,dis = ${formatForce(factoredVerticalLoadKN, u)}  |  R_Ay + R_By = ${formatForce(reactionAKN + reactionBKN, u)}`,
       resultText: supportNote,
     },
     {
       id: 'step-stress-thermal',
       stepNumber: 5,
-      title: 'Cortante, Momento, Esfuerzo y Dilatación Térmica',
-      formula: 'σ_máx = σ_mec + σ_térmica  ;  ΔL_T = α × L × ΔT × 1000',
-      substitution: `V_máx = ${formatForce(maxShearKN, u)} · M_máx = ${formatTorque(maxMomentKNm, u)} · α = ${material.thermalCoeffPerC.toExponential(1)} /°C · ΔT = ${params.temperatureDeltaC}°C · E = ${E_MPa.toLocaleString('es-CO')} MPa`,
-      resultText: `σ_máx = ${maxStressMPa.toFixed(2)} MPa (σ_T = ${thermalStressMPa.toFixed(2)} MPa) · ΔL_T = ${thermalElongationMm.toFixed(2)} mm`,
+      title: 'Cortante, Momento Flector, Esfuerzo Máximo y Dilatación Térmica',
+      whatIsCalculated:
+        'Se halla la fuerza cortante máxima, el momento de flexión más grande, el esfuerzo interno σ_máx (qué tan exigido está el material en MPa) y cuánto se estira o encoge la estructura por cambio de temperatura ΔT.',
+      howItIsDone:
+        '1) El cortante máximo V_máx equivale a la mayor reacción vertical en los apoyos. 2) El momento flector M_máx mide la máxima tendencia a doblarse. 3) El esfuerzo mecánico se obtiene dividiendo la fuerza interna más alta entre el área transversal A (σ = F/A) y sumando el esfuerzo térmico σ_T si los apoyos están bloqueados. 4) La dilatación térmica se calcula multiplicando α × L × ΔT × 1000 mm.',
+      formula: 'σ_mec = |F_máx| / A   |   σ_máx = σ_mec + σ_T   |   ΔL_T = α · L · ΔT · 1000',
+      variables: [
+        { symbol: 'V_máx', meaning: 'Fuerza cortante máxima en la estructura' },
+        { symbol: 'M_máx', meaning: 'Momento flector máximo (esfuerzo de doblado)' },
+        { symbol: 'σ_mec', meaning: 'Esfuerzo mecánico en MegaPascales (MPa = N/mm²)' },
+        { symbol: 'σ_T', meaning: 'Esfuerzo térmico adicional cuando los dos apoyos están empotrados' },
+        { symbol: 'σ_máx', meaning: `Esfuerzo máximo total en el elemento más crítico (${maxStressMPa.toFixed(2)} MPa)` },
+        { symbol: 'σ_y', meaning: `Límite de fluencia o resistencia del material (${material.yieldStrengthMPa} MPa)` },
+        { symbol: 'α', meaning: `Coeficiente de dilatación térmica del material (${material.thermalCoeffPerC.toExponential(1)} /°C)` },
+        { symbol: 'ΔT', meaning: `Cambio de temperatura (${params.temperatureDeltaC} °C)` },
+        { symbol: 'ΔL_T', meaning: 'Alargamiento o contracción térmica en milímetros (mm)' },
+      ],
+      substitution: `V_máx = ${formatForce(maxShearKN, u)}  |  M_máx = ${formatTorque(maxMomentKNm, u)}  |  E = ${E_MPa.toLocaleString('es-CO')} MPa  |  ΔL_T = ${material.thermalCoeffPerC.toExponential(1)} × ${L.toFixed(1)} m × ${params.temperatureDeltaC}°C × 1000 = ${thermalElongationMm.toFixed(2)} mm`,
+      resultText: `σ_máx = ${maxStressMPa.toFixed(2)} MPa (Límite σ_y = ${material.yieldStrengthMPa} MPa · σ_T = ${thermalStressMPa.toFixed(2)} MPa) · ΔL_T = ${thermalElongationMm.toFixed(2)} mm`,
     },
     {
       id: 'step-buckling',
       stepNumber: 6,
-      title: 'Pandeo Crítico de Euler (K·L) y Flecha L/360',
-      formula: 'P_cr = (π² × E × I) / (K × L_e)²  ;  δ_adm = L / 360',
-      substitution: `K = ${params.effectiveLengthK} · I = ${inertiaM4.toExponential(2)} m⁴ · δ_máx = ${maxDeflectionMm.toFixed(2)} mm vs δ_adm = ${allowableDeflectionMm.toFixed(2)} mm`,
-      resultText: bucklingText,
+      title: 'Pandeo Crítico de Euler y Verificación de Deformación (Flecha)',
+      whatIsCalculated:
+        'Se verifica que ninguna barra comprimida se doble lateralmente por pandeo (carga crítica P_cr) y que el pandeo vertical o deformación δ_máx no supere el límite permitido para que la estructura no se curve en exceso.',
+      howItIsDone:
+        '1) Se multiplica el factor de apoyo K por la longitud de la barra comprimida más larga para hallar la longitud efectiva (K·L_e). 2) Se aplica la fórmula de Euler P_cr = (π² × E × I) / (K·L_e)². 3) Se divide la longitud L en milímetros entre 360 para obtener la flecha máxima admisible δ_adm y se compara contra la deformación real δ_máx.',
+      formula: 'P_cr = (π² · E · I) / (K · L_e)²   |   δ_adm = (L · 1000) / 360',
+      variables: [
+        { symbol: 'P_cr', meaning: 'Carga crítica de Euler: fuerza máxima de compresión antes de que una barra se doble por pandeo' },
+        { symbol: 'E', meaning: `Módulo de elasticidad o rigidez del material (${material.elasticModulusGPa} GPa)` },
+        { symbol: 'I', meaning: `Momento de inercia de la sección (${params.momentOfInertiaCm4} cm⁴ = ${inertiaM4.toExponential(2)} m⁴)` },
+        { symbol: 'K', meaning: `Factor de longitud efectiva según los apoyos de la barra (${params.effectiveLengthK})` },
+        { symbol: 'L_e', meaning: 'Longitud libre de la barra más larga sometida a compresión (m)' },
+        { symbol: 'δ_máx', meaning: `Deformación o desplazamiento máximo calculado (${maxDeflectionMm.toFixed(2)} mm)` },
+        { symbol: 'δ_adm', meaning: `Deformación máxima permitida por norma L/360 (${allowableDeflectionMm.toFixed(2)} mm)` },
+      ],
+      substitution: `π² × ${material.elasticModulusGPa} GPa × ${inertiaM4.toExponential(2)} m⁴ con K = ${params.effectiveLengthK}  |  δ_máx = ${maxDeflectionMm.toFixed(2)} mm vs δ_adm = (${L.toFixed(1)}×1000)/360 = ${allowableDeflectionMm.toFixed(2)} mm`,
+      resultText: `${bucklingText} · ${maxDeflectionMm <= allowableDeflectionMm ? 'Flecha CUMPLE (δ_máx ≤ δ_adm)' : 'Flecha EXCEDE L/360'}`,
     },
     {
       id: 'step-safety',
       stepNumber: 7,
-      title: 'Factor de Seguridad Gobernante vs Código',
-      formula: 'FS_fluencia = σ_y / σ_máx  ;  FS = mín(FS_fluencia, FS_pandeo) ≥ FS_req',
-      substitution: `FS_fluencia = ${yieldSafetyFactor.toFixed(2)} · FS_pandeo = ${bucklingSafetyFactor > 99 ? '∞' : bucklingSafetyFactor.toFixed(2)} · Requerido ≥ ${params.requiredSafetyFactor.toFixed(2)}`,
-      resultText: `FS final = ${safetyFactor.toFixed(2)} (${safetyFactor >= params.requiredSafetyFactor ? 'CUMPLE' : 'NO CUMPLE'})`,
+      title: 'Factor de Seguridad Final (FS) vs Exigencia del Código',
+      whatIsCalculated:
+        'Se obtiene el número final que indica cuántas veces resiste la estructura por encima de la carga aplicada antes de ceder por esfuerzo o pandeo, y se compara contra el mínimo exigido FS_req.',
+      howItIsDone:
+        '1) Se divide la resistencia del material σ_y entre el esfuerzo máximo real σ_máx para sacar el factor por fluencia (FS_fluencia). 2) Se divide P_cr entre la compresión máxima para sacar el factor por pandeo (FS_pandeo). 3) Se toma el menor de los dos porque el modo más débil gobierna la seguridad, y se verifica si FS ≥ FS_req.',
+      formula: 'FS_fluencia = σ_y / σ_máx   |   FS_pandeo = P_cr / |F_comp|   |   FS = mín(FS_fluencia, FS_pandeo)',
+      variables: [
+        { symbol: 'FS_fluencia', meaning: 'Margen de seguridad antes de que el material se deforme permanentemente o rompa' },
+        { symbol: 'FS_pandeo', meaning: 'Margen de seguridad antes de que una barra comprimida se pandee' },
+        { symbol: 'F_comp', meaning: `Fuerza máxima de compresión en una barra (${formatForce(maxCompressionKN, u)})` },
+        { symbol: 'FS', meaning: 'Factor de seguridad gobernante (el más crítico de la estructura)' },
+        { symbol: 'FS_req', meaning: `Factor de seguridad mínimo exigido que configuraste (${params.requiredSafetyFactor.toFixed(2)})` },
+      ],
+      substitution: `FS_fluencia = ${material.yieldStrengthMPa} / ${maxStressMPa.toFixed(2)} = ${yieldSafetyFactor.toFixed(2)}  |  FS_pandeo = ${bucklingSafetyFactor > 99 ? '∞ (sin riesgo)' : bucklingSafetyFactor.toFixed(2)}  |  mín = ${safetyFactor.toFixed(2)} vs FS_req = ${params.requiredSafetyFactor.toFixed(2)}`,
+      resultText: `FS final = ${safetyFactor.toFixed(2)} (${safetyFactor >= params.requiredSafetyFactor ? 'CUMPLE: Estructura segura' : 'NO CUMPLE: Requiere refuerzo'})`,
     },
   ];
 }

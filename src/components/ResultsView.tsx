@@ -287,46 +287,145 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
 
       {/* Step-by-Step Numerical Calculation Memory */}
       <section
-        className={`rounded-2xl bg-white dark:bg-[#0D2318] border border-slate-200/80 dark:border-emerald-900/50 p-5 ${
+        className={`rounded-2xl bg-white dark:bg-[#0D2318] border border-slate-200/80 dark:border-emerald-900/50 p-4 sm:p-6 ${
           mobileTab !== 'calculations' ? 'hidden lg:block' : 'block'
         }`}
       >
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
-            <Calculator className="w-4 h-4" />
+        <div className="flex items-start sm:items-center gap-3 mb-5 pb-4 border-b border-slate-200/80 dark:border-emerald-900/50">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+            <Calculator className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
+            <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
               Memoria de Cálculo Numérico (Paso a Paso)
             </h2>
-            <p className="text-xs text-slate-500 dark:text-emerald-200/75">
-              Ecuaciones de estática, resistencia de materiales y estabilidad evaluadas con tus parámetros
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-emerald-200/75 mt-0.5">
+              Explicación clara de qué se calcula, cómo se obtiene cada resultado, qué significa cada letra y las operaciones con tus datos.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {result.calculationSteps.map((step) => (
-            <article
-              key={step.id}
-              className="rounded-xl bg-slate-50/80 dark:bg-[#081910] border border-slate-200/80 dark:border-emerald-900/60 p-4 space-y-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">
-                  {String(step.stepNumber).padStart(2, '0')}. {step.title}
-                </h3>
-              </div>
-              <p className="text-xs font-mono-tabular text-sky-700 dark:text-sky-300 bg-white dark:bg-[#0D2318] px-2.5 py-1.5 rounded-lg border border-slate-200/70 dark:border-emerald-900/50 overflow-x-auto">
-                {step.formula}
-              </p>
-              <p className="text-xs font-mono-tabular text-slate-600 dark:text-emerald-200/80 leading-relaxed">
-                {step.substitution}
-              </p>
-              <p className="text-xs sm:text-sm font-mono-tabular font-bold text-emerald-700 dark:text-emerald-400 pt-1 border-t border-slate-200/70 dark:border-emerald-900/40">
-                ⇒ {step.resultText}
-              </p>
-            </article>
-          ))}
+        <div className="space-y-4">
+          {result.calculationSteps.map((step) => {
+            const howSteps = step.howItIsDone
+              ? step.howItIsDone
+                  .split(/(?=\b\d+\)\s)/)
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [];
+            const substitutionLines = step.substitution
+              .split(/\s*\|\s*/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const formulaLines = step.formula
+              .split(/\s*\|\s*/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+            return (
+              <article
+                key={step.id}
+                className="rounded-xl bg-slate-50/75 dark:bg-[#081910] border border-slate-200/80 dark:border-emerald-900/60 p-4 sm:p-5 space-y-4"
+              >
+                {/* Step Title */}
+                <div className="flex flex-wrap items-baseline justify-between gap-2 pb-2.5 border-b border-slate-200/80 dark:border-emerald-900/50">
+                  <h3 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                    <span className="font-mono-tabular text-emerald-700 dark:text-emerald-400 mr-2">
+                      Paso {String(step.stepNumber).padStart(2, '0')}
+                    </span>
+                    {step.title}
+                  </h3>
+                </div>
+
+                {/* Plain-language Explanation: What & How */}
+                {(step.whatIsCalculated || howSteps.length > 0) && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {step.whatIsCalculated && (
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                          ¿Qué se está calculando?
+                        </h4>
+                        <p className="text-xs sm:text-sm text-slate-700 dark:text-emerald-100/90 leading-relaxed">
+                          {step.whatIsCalculated}
+                        </p>
+                      </div>
+                    )}
+
+                    {howSteps.length > 0 && (
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-sky-800 dark:text-sky-400">
+                          ¿Cómo se saca el resultado?
+                        </h4>
+                        <ul className="space-y-1 text-xs sm:text-sm text-slate-700 dark:text-emerald-100/90 leading-relaxed">
+                          {howSteps.map((line, idx) => (
+                            <li key={idx}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Formula + Letter Meanings */}
+                <div className="rounded-xl bg-white dark:bg-[#0D2318] border border-slate-200/80 dark:border-emerald-900/60 p-3.5 sm:p-4 space-y-3">
+                  <div className="space-y-1.5">
+                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-emerald-300/75">
+                      Fórmula matemática
+                    </h4>
+                    <div className="flex flex-wrap gap-x-5 gap-y-1.5 font-mono-tabular text-xs sm:text-sm font-semibold text-sky-700 dark:text-sky-300">
+                      {formulaLines.map((f, idx) => (
+                        <span key={idx}>{f}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {step.variables && step.variables.length > 0 && (
+                    <div className="pt-2.5 border-t border-slate-100 dark:border-emerald-900/50 space-y-2">
+                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-emerald-300/75">
+                        Significado de cada letra y símbolo
+                      </h4>
+                      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:text-sm">
+                        {step.variables.map((v, idx) => (
+                          <div key={idx} className="flex items-baseline gap-2.5">
+                            <dt className="font-mono-tabular font-bold text-emerald-700 dark:text-emerald-300 shrink-0 min-w-[64px]">
+                              {v.symbol}
+                            </dt>
+                            <dd className="text-slate-600 dark:text-emerald-100/80 leading-snug">
+                              {v.meaning}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
+                </div>
+
+                {/* Numerical Substitution */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-emerald-300/75">
+                    Cálculo paso a paso con tus datos
+                  </h4>
+                  <div className="rounded-lg bg-white/80 dark:bg-[#0D2318]/80 border border-slate-200/70 dark:border-emerald-900/50 px-3.5 py-2.5 space-y-1 font-mono-tabular text-xs sm:text-sm text-slate-700 dark:text-emerald-100/85 overflow-x-auto">
+                    {substitutionLines.map((line, idx) => (
+                      <p key={idx} className="leading-relaxed">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Final Step Result */}
+                <div className="pt-2 border-t border-slate-200/80 dark:border-emerald-900/50 flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                    Resultado del paso {step.stepNumber}
+                  </span>
+                  <p className="text-xs sm:text-sm font-mono-tabular font-bold text-emerald-700 dark:text-emerald-400">
+                    ⇒ {step.resultText}
+                  </p>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 

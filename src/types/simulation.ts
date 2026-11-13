@@ -84,11 +84,19 @@ export interface ChartPoint {
   deflectionMm: number;
 }
 
+export interface CalculationVariable {
+  symbol: string;
+  meaning: string;
+}
+
 export interface CalculationStep {
   id: string;
   stepNumber: number;
   title: string;
+  whatIsCalculated: string;
+  howItIsDone: string;
   formula: string;
+  variables: CalculationVariable[];
   substitution: string;
   resultText: string;
 }
