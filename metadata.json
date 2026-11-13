@@ -1,0 +1,6 @@
+{
+  "name": "StructuSim",
+  "description": "Simulador interactivo de estructuras y estabilidad para puentes, torres eléctricas y edificaciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
